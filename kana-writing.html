@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>かなかき練習</title>
-<link href="https://fonts.googleapis.com/css2?family=Kosugi+Maru&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPMincho&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -15,7 +15,7 @@
   --bg:#fffdf5;--card:#fff;
 }
 body{
-  font-family:'Kosugi Maru','Hiragino Kaku Gothic ProN',sans-serif;
+  font-family:'BIZ UDPMincho','Yu Mincho','YuMincho','Hiragino Mincho ProN',serif;
   background:var(--bg);color:var(--text);
   height:100dvh;display:flex;flex-direction:column;overflow:hidden;
 }
@@ -96,13 +96,14 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 
 /* 行グリッド */
 .row-grid{
-  display:grid;grid-template-columns:repeat(2,1fr);
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));
   gap:4px;flex-shrink:0;
 }
 .row-btn{
   padding:5px 4px;border:2px solid #ddd;border-radius:8px;
   background:#fff;font-family:inherit;font-size:0.7rem;
   cursor:pointer;color:var(--text);transition:all .12s;text-align:center;
+  max-height:34px;
 }
 .row-btn:active,.row-btn.sel{background:var(--blue-l);border-color:var(--blue)}
 .row-btn.dk{border-color:#d4b8f0}
@@ -660,8 +661,8 @@ function startAnim() {
       const dx=pts[i+1].x-pts[i].x, dy=pts[i+1].y-pts[i].y;
       totalDist += Math.sqrt(dx*dx+dy*dy);
     }
-    // 目標：1画 約35フレーム（60fps想定で約0.6秒）
-    const targetFrames = Math.max(20, totalDist / (cvSize * 0.04));
+    // 目標：1画 約20フレーム（60fps想定で約0.33秒）
+    const targetFrames = Math.max(12, totalDist / (cvSize * 0.07));
     return 1.0 / targetFrames;
   }
 
@@ -747,7 +748,7 @@ function startAnim() {
         curPts = loadStroke(sIdx);
         if(curPts) speed = calcSpeed(curPts);
         info.textContent = `${sIdx+1} / ${total} かく`;
-        pauseFrames = 18;  // 次の画の前に約0.3秒待つ
+        pauseFrames = 10;  // 次の画の前に約0.17秒待つ
       }
     }
 
