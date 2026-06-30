@@ -226,6 +226,10 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
       <button class="s-btn btn-gray" onclick="clearTrace()">🗑 けす</button>
       <button class="s-btn btn-green" onclick="checkTrace()">✓ できた！</button>
     </div>
+    <!-- 書き順番号トグル -->
+    <div class="btn-row" id="numtoggle-row" style="display:none">
+      <button class="spd-btn sel" id="btn-numtoggle" onclick="toggleStrokeNum()">🔢 書き順をひょうじ</button>
+    </div>
 
   </div>
 
@@ -325,6 +329,7 @@ let traceDrawing = false;
 let traceMarked = false;
 let cvSize = 240;
 let speedMultiplier = 1.0; // 0.55=ゆっくり, 1.0=ふつう, 1.8=はやく
+let showStrokeNum = true;  // なぞり下絵の書き順番号表示
 
 // ============================================================
 // 起動・リサイズ
@@ -334,15 +339,20 @@ window.addEventListener('load', () => {
   buildRowGrid();
   buildCharGrid([]);
   buildSeqAll();
+  // デフォルトで「あ」を表示
+  selRow = 'a';
+  buildRowGrid();
+  buildCharGrid(ROWS.h.find(r=>r.key==='a').chars);
+  loadChar('あ', seqAll.indexOf('あ'), { skipAutoplay: true });
 });
 window.addEventListener('resize', () => { calcSize(); if(charData) redrawGuide(); });
 
 function calcSize() {
   const lp = document.getElementById('left-panel');
   // 行の高さ制約から計算（ヘッダ・モードトグル・info・ボタン2行などで約140px）
-  const avH = window.innerHeight - 140;
-  const avW = Math.min(window.innerWidth * 0.46, 300);
-  cvSize = Math.floor(Math.min(avH, avW, 300));
+  const avH = window.innerHeight - 150;
+  const avW = Math.min(window.innerWidth * 0.5, 520);
+  cvSize = Math.floor(Math.min(avH, avW, 520));
   const wrap = document.getElementById('canvas-wrap');
   wrap.style.width = cvSize + 'px';
   wrap.style.height = cvSize + 'px';
@@ -443,7 +453,8 @@ function buildCharGrid(chars) {
 // ============================================================
 // 文字読み込み＆練習開始
 // ============================================================
-async function loadChar(ch, seqI) {
+async function loadChar(ch, seqI, opts) {
+  const skipAutoplay = opts && opts.skipAutoplay;
   if(animRaf){ cancelAnimationFrame(animRaf); animRaf=null; }
   curChar = ch;
   seqIdx = seqI >= 0 ? seqI : seqAll.indexOf(ch);
@@ -478,7 +489,7 @@ async function loadChar(ch, seqI) {
     if(!res.ok) throw new Error('HTTP '+res.status);
     charData = await res.json();
     showLoading(false);
-    setMode(mode);
+    setMode(mode, skipAutoplay);
   } catch(e) {
     showErr('データを読み込めませんでした。\nインターネット接続を確認してください。');
   }
@@ -511,7 +522,7 @@ function showErr(msg) {
 // ============================================================
 // モード切り替え
 // ============================================================
-function setMode(m) {
+function setMode(m, skipAutoplay) {
   mode = m;
   const isAnim = m==='anim';
   document.getElementById('btn-anim').className = 'mode-btn' + (isAnim?' active-anim':'');
@@ -519,14 +530,23 @@ function setMode(m) {
   document.getElementById('anim-btns').style.display = isAnim?'flex':'none';
   document.getElementById('speed-row').style.display = isAnim?'flex':'none';
   document.getElementById('trace-btns').style.display = isAnim?'none':'flex';
+  document.getElementById('numtoggle-row').style.display = isAnim?'none':'flex';
   document.getElementById('score-msg').textContent = '';
   clearCanvas('cv-anim');
   clearCanvas('cv-trace');
 
   if(!charData) return;
   redrawGuide();
-  if(isAnim) startAnim();
-  else setupTrace();
+  if(isAnim) {
+    if(skipAutoplay) {
+      // 自動再生せず「▶ もういちど」待ちの静止状態にする
+      document.getElementById('stroke-label').textContent = 'スタートをおしてね';
+    } else {
+      startAnim();
+    }
+  } else {
+    setupTrace();
+  }
 }
 
 // ============================================================
@@ -558,11 +578,27 @@ function redrawGuide() {
   const sc = sz / VBOX;
   const strokes = groupStrokes(charData);
 
-  // 手本：各画のmedian1本を薄く描画
-  strokes.forEach(grp => {
+  // 手本：各画のmedian1本を薄く描画＋書き始めに番号
+  strokes.forEach((grp, i) => {
     if(!grp.median) return;
-    drawSmoothLine(ctx, grp.median.map(p=>({x:p[0]*sc, y:p[1]*sc})),
-      'rgba(180,210,255,0.45)', sz*0.05, false);
+    const pts = grp.median.map(p=>({x:p[0]*sc, y:p[1]*sc}));
+    drawSmoothLine(ctx, pts, 'rgba(180,210,255,0.45)', sz*0.05, false);
+
+    if(!showStrokeNum) return;
+
+    // 書き始め位置に番号バッジ
+    const start = pts[0];
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(start.x, start.y, sz*0.045, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(91,168,255,0.85)';
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${sz*0.055}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(i+1), start.x, start.y + sz*0.002);
+    ctx.restore();
   });
 }
 
@@ -790,6 +826,17 @@ function setSpeed(level) {
 
   // 現在アニメ中ならその場で再生し直す
   if(charData && mode === 'anim') startAnim();
+}
+
+// ============================================================
+// 書き順番号の表示切り替え（なぞりモード用）
+// ============================================================
+function toggleStrokeNum() {
+  showStrokeNum = !showStrokeNum;
+  const btn = document.getElementById('btn-numtoggle');
+  btn.classList.toggle('sel', showStrokeNum);
+  btn.textContent = showStrokeNum ? '🔢 書き順をひょうじ' : '🔢 書き順をかくす';
+  if(charData) redrawGuide();
 }
 
 // ============================================================
