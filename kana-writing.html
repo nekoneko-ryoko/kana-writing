@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>かなかき練習</title>
-<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPMincho&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Klee+One&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -15,7 +15,7 @@
   --bg:#fffdf5;--card:#fff;
 }
 body{
-  font-family:'BIZ UDPMincho','Yu Mincho','YuMincho','Hiragino Mincho ProN',serif;
+  font-family:'Klee One','Hiragino Kaku Gothic ProN',sans-serif;
   background:var(--bg);color:var(--text);
   height:100dvh;display:flex;flex-direction:column;overflow:hidden;
 }
@@ -170,6 +170,13 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
   background:rgba(255,253,245,.9);z-index:10;
   font-size:0.72rem;color:#c00;text-align:center;padding:12px;
 }
+/* スピードボタン */
+.spd-btn{
+  flex:1;padding:5px 2px;border:2px solid #ddd;border-radius:8px;
+  background:#f5f5f5;font-family:inherit;font-size:0.68rem;
+  cursor:pointer;color:var(--gray);transition:all .12s;
+}
+.spd-btn.sel{background:var(--yellow);border-color:#e6b800;color:#333;font-weight:bold;}
 </style>
 </head>
 <body>
@@ -206,6 +213,12 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
     <!-- アニメボタン -->
     <div class="btn-row" id="anim-btns">
       <button class="s-btn btn-yellow" onclick="replayAnim()">▶ もういちど</button>
+    </div>
+    <!-- スピード切り替え -->
+    <div class="btn-row" id="speed-row">
+      <button class="spd-btn sel" id="spd-slow" onclick="setSpeed('slow')">🐢 ゆっくり</button>
+      <button class="spd-btn" id="spd-normal" onclick="setSpeed('normal')">▶ ふつう</button>
+      <button class="spd-btn" id="spd-fast" onclick="setSpeed('fast')">🐇 はやく</button>
     </div>
 
     <!-- なぞりボタン -->
@@ -311,6 +324,7 @@ let animRaf = null;
 let traceDrawing = false;
 let traceMarked = false;
 let cvSize = 240;
+let speedMultiplier = 1.0; // 0.55=ゆっくり, 1.0=ふつう, 1.8=はやく
 
 // ============================================================
 // 起動・リサイズ
@@ -503,6 +517,7 @@ function setMode(m) {
   document.getElementById('btn-anim').className = 'mode-btn' + (isAnim?' active-anim':'');
   document.getElementById('btn-trace').className = 'mode-btn' + (!isAnim?' active-trace':'');
   document.getElementById('anim-btns').style.display = isAnim?'flex':'none';
+  document.getElementById('speed-row').style.display = isAnim?'flex':'none';
   document.getElementById('trace-btns').style.display = isAnim?'none':'flex';
   document.getElementById('score-msg').textContent = '';
   clearCanvas('cv-anim');
@@ -661,8 +676,8 @@ function startAnim() {
       const dx=pts[i+1].x-pts[i].x, dy=pts[i+1].y-pts[i].y;
       totalDist += Math.sqrt(dx*dx+dy*dy);
     }
-    // 目標：1画 約20フレーム（60fps想定で約0.33秒）
-    const targetFrames = Math.max(12, totalDist / (cvSize * 0.07));
+    // 目標：1画 約20フレーム（60fps想定で約0.33秒）をベースに、speedMultiplierで調整
+    const targetFrames = Math.max(8, (totalDist / (cvSize * 0.07)) / speedMultiplier);
     return 1.0 / targetFrames;
   }
 
@@ -748,7 +763,7 @@ function startAnim() {
         curPts = loadStroke(sIdx);
         if(curPts) speed = calcSpeed(curPts);
         info.textContent = `${sIdx+1} / ${total} かく`;
-        pauseFrames = 10;  // 次の画の前に約0.17秒待つ
+        pauseFrames = Math.max(2, Math.round(10 / speedMultiplier));  // 次の画の前の一呼吸
       }
     }
 
@@ -760,6 +775,21 @@ function startAnim() {
 
 function replayAnim() {
   if(charData) startAnim();
+}
+
+// ============================================================
+// アニメ速度切り替え
+// ============================================================
+function setSpeed(level) {
+  const map = { slow: 0.55, normal: 1.0, fast: 1.8 };
+  speedMultiplier = map[level] ?? 1.0;
+
+  ['slow','normal','fast'].forEach(k => {
+    document.getElementById('spd-'+k).classList.toggle('sel', k === level);
+  });
+
+  // 現在アニメ中ならその場で再生し直す
+  if(charData && mode === 'anim') startAnim();
 }
 
 // ============================================================
@@ -815,23 +845,7 @@ function checkTrace() {
     document.getElementById('score-msg').textContent = 'ゆびでなぞってみてね！';
     return;
   }
-  const bg = document.getElementById('cv-guide');
-  const cv = document.getElementById('cv-trace');
-  const sz = cvSize;
-  const bgD = bg.getContext('2d').getImageData(0,0,sz,sz).data;
-  const trD = cv.getContext('2d').getImageData(0,0,sz,sz).data;
-  let tmpl=0,hit=0,tot=0;
-  for(let i=3;i<bgD.length;i+=4){
-    const bt=bgD[i]>20, tt=trD[i]>20;
-    if(bt)tmpl++; if(tt)tot++; if(bt&&tt)hit++;
-  }
-  const cov=tmpl>0?hit/tmpl:0, prec=tot>0?hit/tot:0;
-  const sc=Math.round((cov*.6+prec*.4)*100);
-  let msg;
-  if(sc>=68) msg=`⭐⭐⭐ すごい！じょうず！（${sc}点）`;
-  else if(sc>=42) msg=`⭐⭐ いいかんじ！（${sc}点）`;
-  else msg=`⭐ アニメをみてためそう（${sc}点）`;
-  document.getElementById('score-msg').textContent = msg;
+  document.getElementById('score-msg').textContent = '✨ よくできました！';
 }
 </script>
 </body>
