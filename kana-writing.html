@@ -37,6 +37,42 @@ header h1{color:#fff;font-size:1rem;flex:1}
   overflow-y:auto;max-height:100%;
 }
 
+/* スマホ幅（横が狭い）では上下分割レイアウトに切り替え */
+@media (max-width: 700px) {
+  .layout{
+    display:block !important;
+    overflow-y:auto !important;
+    height:auto !important;
+  }
+  .left-panel{
+    display:flex !important;
+    flex-direction:column;
+    align-items:center;
+    overflow:visible !important;
+    max-height:none !important;
+    margin-bottom:10px;
+  }
+  .right-panel{
+    display:block !important;
+    overflow:visible !important;
+    min-width:0 !important;
+    width:100%;
+  }
+  .char-scroll{
+    flex:none !important;
+    height:340px !important;
+    max-height:340px !important;
+    overflow-y:scroll !important;
+    min-height:0 !important;
+    -webkit-overflow-scrolling:touch;
+  }
+  body{
+    overflow-y:auto !important;
+    height:auto !important;
+    min-height:100dvh;
+  }
+}
+
 /* モードトグル */
 .mode-toggle{
   display:flex;border-radius:10px;overflow:hidden;
@@ -349,9 +385,7 @@ window.addEventListener('load', () => {
 window.addEventListener('resize', () => { calcSize(); if(charData) redrawGuide(); });
 
 function calcSize() {
-  // 右パネル（文字選択エリア）に最低限必要な幅を確保してから左の練習エリアサイズを決める
-  const RIGHT_MIN_WIDTH = 360;   // 右パネルの最低幅
-  const GAP_PADDING = 24;        // layoutのgap+padding分の余白
+  const isMobile = window.innerWidth <= 700;
 
   // 左パネル内、キャンバス以外の要素（モードトグル・情報行・ボタン行群）の実測高さを合計
   const modeToggle = document.querySelector('.mode-toggle');
@@ -360,18 +394,28 @@ function calcSize() {
   const gapCount = 5; // left-panelのgap(6px) × おおよその要素間隔数
 
   let chromeHeight = (modeToggle?.offsetHeight || 0) + (infoRow?.offsetHeight || 0);
-  // 現在表示中のボタン行のみ加算（display:noneは0扱いなので自動的に除外される）
   btnRows.forEach(row => { chromeHeight += row.offsetHeight; });
-  chromeHeight += gapCount * 6; // gapぶんの余白
-  chromeHeight += 24; // layoutのpaddingぶん余裕
+  chromeHeight += gapCount * 6;
+  chromeHeight += 24;
 
-  const avH = window.innerHeight - chromeHeight;
-  const avW = Math.min(
-    window.innerWidth - RIGHT_MIN_WIDTH - GAP_PADDING,
-    window.innerWidth * 0.5,
-    520
-  );
-  cvSize = Math.floor(Math.max(160, Math.min(avH, avW, 520)));
+  if(isMobile) {
+    // スマホ：上下分割。キャンバス幅は画面幅基準、高さは画面の中で文字グリッド用に確保した残り
+    const avW = window.innerWidth - 32; // padding分を引く
+    const avH = window.innerHeight * 0.42; // 画面の上40%程度を練習エリアに
+    cvSize = Math.floor(Math.max(160, Math.min(avW, avH, 380)));
+  } else {
+    // タブレット・PC：左右分割。右パネルに最低幅を確保
+    const RIGHT_MIN_WIDTH = 360;
+    const GAP_PADDING = 24;
+    const avH = window.innerHeight - chromeHeight;
+    const avW = Math.min(
+      window.innerWidth - RIGHT_MIN_WIDTH - GAP_PADDING,
+      window.innerWidth * 0.5,
+      520
+    );
+    cvSize = Math.floor(Math.max(160, Math.min(avH, avW, 520)));
+  }
+
   const wrap = document.getElementById('canvas-wrap');
   wrap.style.width = cvSize + 'px';
   wrap.style.height = cvSize + 'px';
@@ -642,7 +686,43 @@ function groupStrokes(data) {
     const med = (data.medians || []).find(m => m.id === id);
     if(med) map.get(numKey).median = med.value;
   });
-  return order.map(k => map.get(k));
+
+  const groups = order.map(k => map.get(k));
+
+  // 濁点・半濁点ストロークを検出して縮小する
+  // 判定基準：3点以下の短い画 かつ 文字全体の右上エリア（x>500, y<500）にある画
+  shrinkDakuten(groups);
+
+  return groups;
+}
+
+// 濁点（゛）・半濁点（゜）の画を検出し、中心基準で縮小する
+function shrinkDakuten(groups) {
+  const SHRINK = 0.6; // 濁点の長さを60%に縮小（誤検出時の影響を抑えるため控えめに）
+  const n = groups.length;
+
+  groups.forEach((g, i) => {
+    const pts = g.median;
+    if(!pts || pts.length < 2) return;
+
+    const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+    const w = Math.max(...xs) - Math.min(...xs);
+    const h = Math.max(...ys) - Math.min(...ys);
+    const size = Math.max(w, h);
+    const avgX = xs.reduce((a,b)=>a+b,0) / xs.length;
+
+    // 濁点・半濁点の典型パターン：最後の2画以内、文字の右側、サイズが小さい
+    const isLastTwo = i >= n - 2;
+    const isDakuten = isLastTwo && avgX > 600 && size < 260;
+
+    if(isDakuten) {
+      const cx = pts[0][0], cy = pts[0][1]; // 書き始め点を基準に縮小
+      g.median = pts.map(p => [
+        cx + (p[0]-cx) * SHRINK,
+        cy + (p[1]-cy) * SHRINK
+      ]);
+    }
+  });
 }
 
 // ============================================================
